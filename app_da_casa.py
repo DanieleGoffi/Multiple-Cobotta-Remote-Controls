@@ -1,0 +1,865 @@
+#import inspect
+#import json
+#import sys
+import tracemalloc
+#from datetime import datetime
+from tkinter import *
+from win32com.client import Dispatch
+
+#from docutils.nodes import label
+#from matplotlib.colors import ListedColormap
+#from numpy.matrixlib.defmatrix import matrix
+import bCAPClient.bcapclient as bcapclient
+
+#from scipy.stats import randint
+#from sympy import false
+#import matplotlib.pyplot as plt
+#from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+from tkinter.messagebox import showerror, showinfo
+from tkinter import filedialog
+#from memory_profiler import profile
+#import timeout_decorator
+
+
+#!/usr/bin/env python
+    # -*- coding: utf-8 -*-
+import csv
+import copy
+import argparse
+import itertools
+from collections import Counter
+from collections import deque
+
+import cv2 as cv
+import numpy as np
+import mediapipe as mp
+
+from utils import CvFpsCalc
+from model import KeyPointClassifier
+#from model import PointHistoryClassifier
+
+def print_error(message:str):
+    showerror("Error", message)
+    raise Exception(message)
+
+def resetAll(a,b,c,d,e,f):
+    a=0
+    b=0
+    c=0
+    d=0
+    e=0
+    f=0
+
+class App(Tk):
+    def __init__(self):
+        super().__init__()
+        self.configure(background='white')
+
+        self.passiBase = [10, 5, 4, 11, 7, 11]
+
+        self.minimi = [-150, -60, 20, -165, -85, -165]
+        self.massimi = [150, 90, 140, 165, 125, 165]
+
+        self.passoMult = DoubleVar(value=1)
+
+        self.j1 = DoubleVar(value=0)
+        self.j2 = DoubleVar(value=15)
+        self.j3 = DoubleVar(value=80)
+        self.j4 = DoubleVar(value=0)
+        self.j5 = DoubleVar(value=20)
+        self.j6 = DoubleVar(value=0)
+
+        self.hand = IntVar(value=30)
+    
+        self.title("PF4EA")
+        self.geometry("1000x1200")
+        self.page = Page1(self)
+
+    def move(self, joint, var):
+
+        print("TakeArm")
+
+        ### Set Parameters
+        #Interpolation
+        Comp=1
+
+        if (joint is self.j1):
+            index=0
+            buttonsx= self.page.button_1s
+            buttondx= self.page.button_1d
+        elif (joint is self.j2):
+            index=1
+            buttonsx= self.page.button_2s
+            buttondx= self.page.button_2d
+        elif (joint is self.j3):
+            index=2
+            buttonsx= self.page.button_3s
+            buttondx= self.page.button_3d
+        elif (joint is self.j4):
+            index=3
+            buttonsx= self.page.button_4s
+            buttondx= self.page.button_4d
+        elif (joint is self.j5):
+            index=4
+            buttonsx= self.page.button_5s
+            buttondx= self.page.button_5d
+        elif (joint is self.j6):
+            index=5
+            buttonsx= self.page.button_6s
+            buttondx= self.page.button_6d
+
+
+        if(var == 0):
+            j = joint.get() - int(self.passiBase[index] * self.passoMult.get())
+            if j < self.minimi[index]:
+                j = self.minimi[index]
+            joint.set(j)
+           
+
+        elif(var == 1):
+            j = joint.get() + int(self.passiBase[index] * self.passoMult.get())
+            if j > self.massimi[index]:
+                j = self.massimi[index]
+            joint.set(j)
+
+
+
+
+        if joint.get() == self.minimi[index]:
+                buttonsx.config(state=DISABLED)
+        else: 
+                buttonsx.config(state=NORMAL)
+
+        if joint.get() == self.massimi[index]:
+                buttondx.config(state=DISABLED)
+        else: 
+                buttondx.config(state=NORMAL)
+        
+
+        Pose ="@P J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
+        #m_bcapclient.robot_move(HRobot,Comp,Pose,"")
+        #print("Complete Move P,@P P[1]")
+        print(Pose)
+
+
+    def modify_passo_mult(self, var):
+        if var == 0:
+            self.passoMult.set(self.passoMult.get() - 0.5)
+        elif var == 1:
+            self.passoMult.set(self.passoMult.get() + 0.5)
+        else:
+            print_error("Invalid var value")
+
+        if self.passoMult.get() == 0.5:
+            self.page.button_passos.config(state=DISABLED)
+        else:
+            self.page.button_passos.config(state=NORMAL)
+
+        if self.passoMult.get() == 5:
+            self.page.button_passod.config(state=DISABLED)
+        else:
+            self.page.button_passod.config(state=NORMAL)
+
+
+
+    def close_hand(self):
+        
+        print("Close Hand")
+
+    def open_hand(self):
+            
+        print("Open Hand")
+
+##################### GESTURE#####################
+############################################################################################################
+        
+    def get_args(self):
+        parser = argparse.ArgumentParser()
+
+        parser.add_argument("--device", type=int, default=0)
+        parser.add_argument("--width", help='cap width', type=int, default=960)
+        parser.add_argument("--height", help='cap height', type=int, default=540)
+
+        parser.add_argument('--use_static_image_mode', action='store_true')
+        parser.add_argument("--min_detection_confidence",
+                            help='min_detection_confidence',
+                            type=float,
+                            default=0.7)
+        parser.add_argument("--min_tracking_confidence",
+                            help='min_tracking_confidence',
+                            type=int,
+                            default=0.5)
+
+        args = parser.parse_args()
+
+        return args
+
+
+    def start_gesture(self):
+        # Argument parsing #################################################################
+        args = self.get_args()
+
+        cap_device = args.device
+        cap_width = args.width
+        cap_height = args.height
+
+        use_static_image_mode = args.use_static_image_mode
+        min_detection_confidence = args.min_detection_confidence
+        min_tracking_confidence = args.min_tracking_confidence
+
+        use_brect = True
+
+        # Camera preparation ###############################################################
+        cap = cv.VideoCapture(cap_device)
+        cap.set(cv.CAP_PROP_FRAME_WIDTH, cap_width)
+        cap.set(cv.CAP_PROP_FRAME_HEIGHT, cap_height)
+
+        # Model load #############################################################
+        mp_hands = mp.solutions.hands
+        hands = mp_hands.Hands(
+            static_image_mode=use_static_image_mode,
+            max_num_hands=1,
+            min_detection_confidence=min_detection_confidence,
+            min_tracking_confidence=min_tracking_confidence,
+        )
+
+        keypoint_classifier = KeyPointClassifier()
+
+       
+
+        # Read labels ###########################################################
+        with open('model/keypoint_classifier/keypoint_classifier_label.csv',
+                encoding='utf-8-sig') as f:
+            keypoint_classifier_labels = csv.reader(f)
+            keypoint_classifier_labels = [
+                row[0] for row in keypoint_classifier_labels
+            ]
+        
+
+        # FPS Measurement ########################################################
+        cvFpsCalc = CvFpsCalc(buffer_len=10)
+
+
+        #  ########################################################################
+        mode = 0
+
+        a=0
+        b=0
+        c=0
+        d=0
+        e=0
+        f=0
+        joint = None
+        robustezza = 10
+
+        while True:
+            fps = cvFpsCalc.get()
+
+            # Process Key (ESC: end) #################################################
+            key = cv.waitKey(10)
+            if key == 27:  # ESC
+                break
+            number, mode = self.select_mode(key, mode)
+
+            # Camera capture #####################################################
+            ret, image = cap.read()
+            if not ret:
+                break
+            image = cv.flip(image, 1)  # Mirror display
+            debug_image = copy.deepcopy(image)
+
+            # Detection implementation #############################################################
+            image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+
+            image.flags.writeable = False
+            results = hands.process(image)
+            image.flags.writeable = True
+
+            #  ####################################################################
+            if results.multi_hand_landmarks is not None:
+                for hand_landmarks, handedness in zip(results.multi_hand_landmarks,
+                                                    results.multi_handedness):
+                    # Bounding box calculation
+                    brect = self.calc_bounding_rect(debug_image, hand_landmarks)
+                    # Landmark calculation
+                    landmark_list = self.calc_landmark_list(debug_image, hand_landmarks)
+
+                    # Conversion to relative coordinates / normalized coordinates
+                    pre_processed_landmark_list = self.pre_process_landmark(
+                        landmark_list)
+                    
+                    # Write to the dataset file
+                    self.logging_csv(number, mode, pre_processed_landmark_list)
+
+                    # Hand sign classification
+                    hand_sign_id = keypoint_classifier(pre_processed_landmark_list)
+                    
+                    print(hand_sign_id)
+                    print(keypoint_classifier_labels[hand_sign_id])
+                    print()
+                    print()
+
+                    
+                    
+                    
+                    
+                    dxsx = handedness.classification[0].label[0:]
+                    segno = keypoint_classifier_labels[hand_sign_id]
+
+
+                    if segno == "LSign":
+                        a=a+1
+                        print("a:" + str(a))
+                    if segno == "Pointer":
+                        b=b+1
+                    if segno == "ThumbUp":
+                        c=c+1
+                    if segno == "3Fingers":
+                        d=d+1
+                    if segno == "Victory":
+                        e=e+1
+                    if segno == "Shaker":
+                        f=f+1
+
+
+
+
+                    if a >=robustezza:
+                        joint = self.j1
+                        a=0
+                        b=0
+                        c=0
+                        d=0
+                        e=0
+                        f=0
+                        print("SONO ENTRATO")
+
+                    if b>=robustezza:
+                        joint = self.j2 
+                        a=0
+                        b=0
+                        c=0
+                        d=0
+                        e=0
+                        f=0
+
+                    if c>=robustezza:
+                        joint =  self.j3
+                        a=0
+                        b=0
+                        c=0
+                        d=0
+                        e=0
+                        f=0
+
+                    if d>=robustezza:
+                        joint = self.j4 
+                        a=0
+                        b=0
+                        c=0
+                        d=0
+                        e=0
+                        f=0
+                    if e>=robustezza:
+                        joint = self.j5
+                        a=0
+                        b=0
+                        c=0
+                        d=0
+                        e=0
+                        f=0
+
+                    if f>=robustezza:
+                        joint = self.j6
+                        a=0
+                        b=0
+                        c=0
+                        d=0
+                        e=0
+                        f=0
+
+                    
+                    if(joint != None):
+                        if dxsx == "Right":
+                            self.move(joint, 1)
+                            print("mi sono mosso")
+                        if dxsx == "Left":
+                            self.move(joint, 0)
+                            print("mi sono mosso")
+                        joint=None
+                        
+
+
+                    print(keypoint_classifier_labels[hand_sign_id] + " " + dxsx)
+                    # Drawing part
+                    debug_image = self.draw_bounding_rect(use_brect, debug_image, brect)
+                    debug_image = self.draw_landmarks(debug_image, landmark_list)
+                    debug_image = self.draw_info_text(
+                        debug_image,
+                        brect,
+                        handedness,
+                        keypoint_classifier_labels[hand_sign_id]
+                    )
+
+            debug_image = self.draw_info(debug_image, fps, mode, number)
+
+            # Screen reflection #############################################################
+            cv.imshow('Hand Gesture Recognition', debug_image)
+
+        cap.release()
+        cv.destroyAllWindows()
+
+
+    def select_mode(self, key, mode):
+        number = -1
+        if 48 <= key <= 57:  # 0 ~ 9
+            number = key - 48
+        if key == 110:  # n
+            mode = 0
+        if key == 107:  # k
+            mode = 1
+        if key == 104:  # h
+            mode = 2
+        return number, mode
+
+
+    def calc_bounding_rect(self, image, landmarks):
+        image_width, image_height = image.shape[1], image.shape[0]
+
+        landmark_array = np.empty((0, 2), int)
+
+        for _, landmark in enumerate(landmarks.landmark):
+            landmark_x = min(int(landmark.x * image_width), image_width - 1)
+            landmark_y = min(int(landmark.y * image_height), image_height - 1)
+
+            landmark_point = [np.array((landmark_x, landmark_y))]
+
+            landmark_array = np.append(landmark_array, landmark_point, axis=0)
+
+        x, y, w, h = cv.boundingRect(landmark_array)
+
+        return [x, y, x + w, y + h]
+
+
+    def calc_landmark_list(self, image, landmarks):
+        image_width, image_height = image.shape[1], image.shape[0]
+
+        landmark_point = []
+
+        # Keypoint
+        for _, landmark in enumerate(landmarks.landmark):
+            landmark_x = min(int(landmark.x * image_width), image_width - 1)
+            landmark_y = min(int(landmark.y * image_height), image_height - 1)
+            # landmark_z = landmark.z
+
+            landmark_point.append([landmark_x, landmark_y])
+
+        return landmark_point
+
+
+    def pre_process_landmark(self, landmark_list):
+        temp_landmark_list = copy.deepcopy(landmark_list)
+
+        # Convert to relative coordinates
+        base_x, base_y = 0, 0
+        for index, landmark_point in enumerate(temp_landmark_list):
+            if index == 0:
+                base_x, base_y = landmark_point[0], landmark_point[1]
+
+            temp_landmark_list[index][0] = temp_landmark_list[index][0] - base_x
+            temp_landmark_list[index][1] = temp_landmark_list[index][1] - base_y
+
+        # Convert to a one-dimensional list
+        temp_landmark_list = list(
+            itertools.chain.from_iterable(temp_landmark_list))
+
+        # Normalization
+        max_value = max(list(map(abs, temp_landmark_list)))
+
+        def normalize_(n):
+            return n / max_value
+
+        temp_landmark_list = list(map(normalize_, temp_landmark_list))
+
+        return temp_landmark_list
+
+
+
+    def logging_csv(self, number, mode, landmark_list):
+        if mode == 0:
+            pass
+        if mode == 1 and (0 <= number <= 9):
+            csv_path = 'model/keypoint_classifier/keypoint.csv'
+            with open(csv_path, 'a', newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([number, *landmark_list])
+        if mode == 2 and (0 <= number <= 9):
+            print("MODE = 2")
+        return
+
+
+    def draw_landmarks(self, image, landmark_point):
+        if len(landmark_point) > 0:
+            # Thumb
+            cv.line(image, tuple(landmark_point[2]), tuple(landmark_point[3]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[2]), tuple(landmark_point[3]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[3]), tuple(landmark_point[4]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[3]), tuple(landmark_point[4]),
+                    (255, 255, 255), 2)
+
+            # Index finger
+            cv.line(image, tuple(landmark_point[5]), tuple(landmark_point[6]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[5]), tuple(landmark_point[6]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[6]), tuple(landmark_point[7]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[6]), tuple(landmark_point[7]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[7]), tuple(landmark_point[8]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[7]), tuple(landmark_point[8]),
+                    (255, 255, 255), 2)
+
+            # Middle finger
+            cv.line(image, tuple(landmark_point[9]), tuple(landmark_point[10]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[9]), tuple(landmark_point[10]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[10]), tuple(landmark_point[11]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[10]), tuple(landmark_point[11]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[11]), tuple(landmark_point[12]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[11]), tuple(landmark_point[12]),
+                    (255, 255, 255), 2)
+
+            # Ring finger
+            cv.line(image, tuple(landmark_point[13]), tuple(landmark_point[14]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[13]), tuple(landmark_point[14]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[14]), tuple(landmark_point[15]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[14]), tuple(landmark_point[15]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[15]), tuple(landmark_point[16]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[15]), tuple(landmark_point[16]),
+                    (255, 255, 255), 2)
+
+            # Little finger
+            cv.line(image, tuple(landmark_point[17]), tuple(landmark_point[18]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[17]), tuple(landmark_point[18]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[18]), tuple(landmark_point[19]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[18]), tuple(landmark_point[19]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[19]), tuple(landmark_point[20]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[19]), tuple(landmark_point[20]),
+                    (255, 255, 255), 2)
+
+            # Palm
+            cv.line(image, tuple(landmark_point[0]), tuple(landmark_point[1]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[0]), tuple(landmark_point[1]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[1]), tuple(landmark_point[2]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[1]), tuple(landmark_point[2]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[2]), tuple(landmark_point[5]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[2]), tuple(landmark_point[5]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[5]), tuple(landmark_point[9]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[5]), tuple(landmark_point[9]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[9]), tuple(landmark_point[13]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[9]), tuple(landmark_point[13]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[13]), tuple(landmark_point[17]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[13]), tuple(landmark_point[17]),
+                    (255, 255, 255), 2)
+            cv.line(image, tuple(landmark_point[17]), tuple(landmark_point[0]),
+                    (0, 0, 0), 6)
+            cv.line(image, tuple(landmark_point[17]), tuple(landmark_point[0]),
+                    (255, 255, 255), 2)
+
+        # Key Points
+        for index, landmark in enumerate(landmark_point):
+            if index == 0:  # 手首1
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 1:  # 手首2
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 2:  # 親指：付け根
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 3:  # 親指：第1関節
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 4:  # 親指：指先
+                cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+            if index == 5:  # 人差指：付け根
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 6:  # 人差指：第2関節
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 7:  # 人差指：第1関節
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 8:  # 人差指：指先
+                cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+            if index == 9:  # 中指：付け根
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 10:  # 中指：第2関節
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 11:  # 中指：第1関節
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 12:  # 中指：指先
+                cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+            if index == 13:  # 薬指：付け根
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 14:  # 薬指：第2関節
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 15:  # 薬指：第1関節
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 16:  # 薬指：指先
+                cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+            if index == 17:  # 小指：付け根
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 18:  # 小指：第2関節
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 19:  # 小指：第1関節
+                cv.circle(image, (landmark[0], landmark[1]), 5, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 5, (0, 0, 0), 1)
+            if index == 20:  # 小指：指先
+                cv.circle(image, (landmark[0], landmark[1]), 8, (255, 255, 255),
+                        -1)
+                cv.circle(image, (landmark[0], landmark[1]), 8, (0, 0, 0), 1)
+
+        return image
+
+
+    def draw_bounding_rect(self, use_brect, image, brect):
+        if use_brect:
+            # Outer rectangle
+            cv.rectangle(image, (brect[0], brect[1]), (brect[2], brect[3]),
+                        (0, 0, 0), 1)
+
+        return image
+
+
+    def draw_info_text(self, image, brect, handedness, hand_sign_text):
+        cv.rectangle(image, (brect[0], brect[1]), (brect[2], brect[1] - 22),
+                    (0, 0, 0), -1)
+
+        info_text = handedness.classification[0].label[0:]
+        if hand_sign_text != "":
+            info_text = info_text + ':' + hand_sign_text
+        cv.putText(image, info_text, (brect[0] + 5, brect[1] - 4),
+                cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1, cv.LINE_AA)
+
+        return image
+
+
+    
+
+
+    def draw_info(self, image, fps, mode, number):
+        cv.putText(image, "J1:" + str(self.j1.get()) + " J2:" + str(self.j2.get()) + " J3:" + str(self.j3.get()) + " J4:" + str(self.j4.get())
+                   + " J5:" + str(self.j5.get()) + " J6:" + str(self.j6.get()) , (10, 30), cv.FONT_HERSHEY_SIMPLEX,
+                0.7, (0, 0, 0), 4, cv.LINE_AA)
+        
+        cv.putText(image, "J1:" + str(self.j1.get()) + " J2:" + str(self.j2.get()) + " J3:" + str(self.j3.get()) + " J4:" + str(self.j4.get())
+                   + " J5:" + str(self.j5.get()) + " J6:" + str(self.j6.get()), (10, 30), cv.FONT_HERSHEY_SIMPLEX,
+                0.7, (255, 255, 255), 2, cv.LINE_AA)
+
+        mode_string = ['Logging Key Point']
+        if 1 <= mode <= 2:
+            cv.putText(image, "MODE:" + mode_string[mode - 1], (10, 90),
+                    cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
+                    cv.LINE_AA)
+            if 0 <= number <= 9:
+                cv.putText(image, "NUM:" + str(number), (10, 110),
+                        cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
+                        cv.LINE_AA)
+        return image
+
+        
+############################################################################################################        
+  
+
+
+  
+
+class Page1(Frame):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.pack(pady=5)
+
+        
+        self.label_j1 = Label(self, text='J1', font=('calibre', 10, 'bold'))
+        self.entry_j1 = Entry(self, textvariable=parent.j1, font=('calibre', 10, 'normal'))
+        
+        self.label_j2 = Label(self, text='J2', font=('calibre', 10, 'bold'))
+        self.entry_j2 = Entry(self, textvariable=parent.j2, font=('calibre', 10, 'normal'))
+        
+        self.label_j3 = Label(self, text='J3', font=('calibre', 10, 'bold'))
+        self.entry_j3 = Entry(self, textvariable=parent.j3, font=('calibre', 10, 'normal'))
+        
+        self.label_j4 = Label(self, text='J4', font=('calibre', 10, 'bold'))
+        self.entry_j4 = Entry(self, textvariable=parent.j4, font=('calibre', 10, 'normal'))
+          
+        self.label_j5 = Label(self, text='J5', font=('calibre', 10, 'bold'))
+        self.entry_j5 = Entry(self, textvariable=parent.j5, font=('calibre', 10, 'normal'))
+        
+        self.label_j6 = Label(self, text='J6', font=('calibre', 10, 'bold'))
+        self.entry_j6 = Entry(self, textvariable=parent.j6, font=('calibre', 10, 'normal'))
+
+        self.label_j1.grid(row=0, column=1, sticky='e', padx=5, pady=5)
+        self.entry_j1.grid(row=0, column=2,sticky='w', padx=5, pady=5)
+
+        self.label_j2.grid(row=1, column=1, sticky='e', padx=5, pady=5)
+        self.entry_j2.grid(row=1, column=2,sticky='w', padx=5, pady=5)       
+        
+        self.label_j3.grid(row=2, column=1, sticky='e', padx=5, pady=5)
+        self.entry_j3.grid(row=2, column=2,sticky='w', padx=5, pady=5)       
+        
+        self.label_j4.grid(row=3, column=1, sticky='e', padx=5, pady=5)
+        self.entry_j4.grid(row=3, column=2,sticky='w', padx=5, pady=5)        
+        
+        self.label_j5.grid(row=4, column=1, sticky='e', padx=5, pady=5)
+        self.entry_j5.grid(row=4, column=2,sticky='w', padx=5, pady=5)        
+        
+        self.label_j6.grid(row=5, column=1, sticky='e', padx=5, pady=5)
+        self.entry_j6.grid(row=5, column=2,sticky='w', padx=5, pady=5) 
+
+        # Main action buttons
+        self.button_1s = Button(self, text='<', command=lambda: parent.move(parent.j1, 0))
+        self.button_1d = Button(self, text='>', command=lambda: parent.move(parent.j1, 1))
+
+        self.button_2s = Button(self, text='<', command=lambda: parent.move(parent.j2, 0))
+        self.button_2d = Button(self, text='>', command=lambda: parent.move(parent.j2, 1))
+
+        self.button_3s = Button(self, text='<', command=lambda: parent.move(parent.j3, 0))
+        self.button_3d = Button(self, text='>', command=lambda: parent.move(parent.j3, 1))
+
+        self.button_4s = Button(self, text='<', command=lambda: parent.move(parent.j4, 0))
+        self.button_4d = Button(self, text='>', command=lambda: parent.move(parent.j4, 1))
+
+        self.button_5s = Button(self, text='<', command=lambda: parent.move(parent.j5, 0))
+        self.button_5d = Button(self, text='>', command=lambda: parent.move(parent.j5, 1))
+
+        self.button_6s = Button(self, text='<', command=lambda: parent.move(parent.j6, 0))
+        self.button_6d = Button(self, text='>', command=lambda: parent.move(parent.j6, 1))
+
+        
+
+        self.button_1s.grid(row=0, column=0, columnspan=1, pady=10)
+        self.button_1d.grid(row=0, column=3, columnspan=1, pady=10)
+
+        self.button_2s.grid(row=1, column=0, columnspan=1, pady=10)
+        self.button_2d.grid(row=1, column=3, columnspan=1, pady=10)
+
+        self.button_3s.grid(row=2, column=0, columnspan=1, pady=10)
+        self.button_3d.grid(row=2, column=3, columnspan=1, pady=10)
+
+        self.button_4s.grid(row=3, column=0, columnspan=1, pady=10)
+        self.button_4d.grid(row=3, column=3, columnspan=1, pady=10)
+
+        self.button_5s.grid(row=4, column=0, columnspan=1, pady=10)
+        self.button_5d.grid(row=4, column=3, columnspan=1, pady=10)
+
+        self.button_6s.grid(row=5, column=0, columnspan=1, pady=10)
+        self.button_6d.grid(row=5, column=3, columnspan=1, pady=10)
+
+
+        self.label_passoMult = Label(self, text='Passo: ', font=('calibre', 10, 'bold'))
+        self.entry_passoMult = Entry(self, textvariable=parent.passoMult, font=('calibre', 10, 'normal'))
+
+        self.label_passoMult.grid(row=6, column=2, sticky='w', padx=5, pady=5)
+        self.entry_passoMult.grid(row=7, column=2, sticky='w', padx=5, pady=5) 
+
+        
+        self.button_passos = Button(self, text='<', command=lambda: parent.modify_passo_mult(0))
+        self.button_passod = Button(self, text='>', command=lambda: parent.modify_passo_mult(1))
+
+        self.button_passos.grid(row=7, column=0, columnspan=1, pady=10)
+        self.button_passod.grid(row=7, column=3, columnspan=1, pady=10)
+
+        
+
+        self.button_1s.grid(row=0, column=0, columnspan=1, pady=10)
+        self.button_1d.grid(row=0, column=3, columnspan=1, pady=10)
+
+        self.entry_j1.config(state='readonly')
+        self.entry_j2.config(state='readonly')
+        self.entry_j3.config(state='readonly')
+        self.entry_j4.config(state='readonly')
+        self.entry_j5.config(state='readonly')
+        self.entry_j6.config(state='readonly')
+        self.entry_passoMult.config(state='readonly')
+
+
+        self.button = Button(self, text='OPEN', command=parent.open_hand)
+        self.button.grid(row=34, column=0, columnspan=1, pady=10)
+
+
+        self.button = Button(self, text='CLOSE', command=parent.close_hand)
+        self.button.grid(row=34, column=3, columnspan=1, pady=10)
+
+        self.button = Button(self, text='OPEN CAMERA', command=parent.start_gesture)
+        self.button.grid(row=35, column=0, columnspan=1, pady=10)
+
+        
+
+
+app = App()
+app.mainloop()
