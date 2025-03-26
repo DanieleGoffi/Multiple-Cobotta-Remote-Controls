@@ -23,7 +23,7 @@ class App(Tk):
         super().__init__()
         self.configure(background='white')
 
-        self.j1 = DoubleVar(value= 380.0)
+        self.j1 = DoubleVar(value= 318.0)
         self.j2 = DoubleVar(value= -12.04)
         self.j3 = DoubleVar(value= 200.36)
         self.j4 = DoubleVar(value= 173.86)
@@ -70,12 +70,25 @@ class App(Tk):
 
         ### Set Parameters
         #Interpolation
-        Comp=1
+        Comp = 2
 
         try:        
-            Pose ="@P P("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
-            m_bcapclient.robot_move(HRobot,Comp,Pose,"")
+            #Pose ="P(177.483268825558, -44.478627592948996, 254.99815172770593, -179.98842099994923, 0, 179.99584205147127, 261.0)"
+            Pose ="P("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+", 261.0)"
+            m_bcapclient.robot_move(HRobot,2,Pose,"")
+            """
+            Q1 = "@0 P(124.8479084757812, 96.71132432510223, 254.93505849932905, 179.98326477675423, -0.021660598353600596, 179.9971873030206, 261.0)"
+            m_bcapclient.robot_move(HRobot,2,Q1,"")
+            Q2 = "@0 P(201.62729889242553, 96.71465770886049, 254.9352502844515, 179.98348831787996, -0.021534861588810798, 179.99838567272027, 261.0)"
+            m_bcapclient.robot_move(HRobot,2,Q2,"")
+            Q3 = "@0 P(222.45008156262494, -28.895388040937206, 254.9197279214668, 179.9806000045344, -0.029053337503689936, 179.98516581416754, 261.0)"
+            m_bcapclient.robot_move(HRobot,2,Q3,"")
+            Q4 = "@0 P(217.31049652044388, -130.24508774032034, 254.89685566528902, 179.9716479887839, -0.03128951339508686, 179.98066547808395, 261.0)"
+            m_bcapclient.robot_move(HRobot,2,Q4,"")
+            Q5 = "@0 P(133.63413919141982, -131.393237172843, 254.87885013312, 179.9599341526348, -0.027773416827480392, 179.97129867455095, 261.0)"
+            m_bcapclient.robot_move(HRobot,2,Q5,"")
             print("Complete Move P,@P P[1]")
+            """
         except:
             print("no buono")
 

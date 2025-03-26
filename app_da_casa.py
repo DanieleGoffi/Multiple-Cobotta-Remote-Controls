@@ -36,7 +36,7 @@ import numpy as np
 import mediapipe as mp
 
 from utils import CvFpsCalc
-from model import KeyPointClassifier
+from model2 import KeyPointClassifier
 #from model import PointHistoryClassifier
 
 def print_error(message:str):
@@ -229,7 +229,7 @@ class App(Tk):
        
 
         # Read labels ###########################################################
-        with open('model/keypoint_classifier/keypoint_classifier_label.csv',
+        with open('model2/keypoint_classifier/keypoint_classifier_label.csv',
                 encoding='utf-8-sig') as f:
             keypoint_classifier_labels = csv.reader(f)
             keypoint_classifier_labels = [
@@ -490,7 +490,7 @@ class App(Tk):
         if mode == 0:
             pass
         if mode == 1 and (0 <= number <= 9):
-            csv_path = 'model/keypoint_classifier/keypoint.csv'
+            csv_path = 'model2/keypoint_classifier/keypoint.csv'
             with open(csv_path, 'a', newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([number, *landmark_list])

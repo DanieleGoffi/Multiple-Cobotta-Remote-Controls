@@ -1,30 +1,15 @@
-#import inspect
-#import json
-#import sys
-import tracemalloc
-#from datetime import datetime
+#import tracemalloc
 from tkinter import *
 from win32com.client import Dispatch
 
-#from docutils.nodes import label
-#from matplotlib.colors import ListedColormap
-#from numpy.matrixlib.defmatrix import matrix
 import bCAPClient.bcapclient as bcapclient
 
-#from scipy.stats import randint
-#from sympy import false
-#import matplotlib.pyplot as plt
-#from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from tkinter.messagebox import showerror, showinfo
 from tkinter import filedialog
-#from memory_profiler import profile
-#import timeout_decorator
+
 import threading
 
-
-#!/usr/bin/env python
-    # -*- coding: utf-8 -*-
 import csv
 import copy
 import argparse
@@ -37,20 +22,116 @@ import numpy as np
 import mediapipe as mp
 
 from utils import CvFpsCalc
-from model import KeyPointClassifier
+from model2 import KeyPointClassifier
 #from model import PointHistoryClassifier
+import speech_recognition as sr
+import re
+from page import Page1
 
-def print_error(message:str):
-    showerror("Error", message)
-    raise Exception(message)
 
-def resetAll(a,b,c,d,e,f):
-    a=0
-    b=0
-    c=0
-    d=0
-    e=0
-    f=0
+def move_arm_to_position(Position):
+
+    host = "192.168.0.1"
+    port = 5007
+    timeout = 2000
+
+    m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
+    #print("Open Connection")
+
+    m_bcapclient.service_start("")
+    #print("Send SERVICE_START packet")
+
+    Name = ""
+    Provider="CaoProv.DENSO.VRC"
+    Machine = ("localhost")
+    Option = ("")
+
+    hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
+    #print("Connect RC8")
+    HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
+    #print("AddRobot")
+
+    Command = "TakeArm"
+    Param = [0,0]
+    m_bcapclient.robot_execute(HRobot,Command,Param)
+    #print("TakeArm")
+
+    Comp=1
+    m_bcapclient.robot_move(HRobot,Comp,Position,"")
+    #print("Complete Move")
+
+
+    Command = "GiveArm"
+    Param = None
+    m_bcapclient.robot_execute(HRobot,Command,Param)
+    #print("GiveArm")
+    
+    if(HRobot != 0):
+        m_bcapclient.robot_release(HRobot)
+        #print("Release Robot Object")
+    
+    if(hCtrl != 0):
+        m_bcapclient.controller_disconnect(hCtrl)
+        #print("Release Controller")
+    
+    m_bcapclient.service_stop()
+    #print("B-CAP service Stop")
+
+def move_hand(input_value):
+    host = "192.168.0.1"
+    port = 5007
+    timeout = 2000
+
+    ### Connection processing of tcp communication
+    m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
+    print("Open Connection")
+
+    ### start b_cap Service
+    m_bcapclient.service_start("")
+    print("Send SERVICE_START packet")
+
+    ### set Parameter
+    Name = ""
+    Provider="CaoProv.DENSO.VRC"
+    Machine = ("localhost")
+    Option = ("")
+
+    ### Connect to RC8 (RC8(VRC)provider)
+    hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
+    print("Connect RC8")
+    ### get Robot Object Handl
+    HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
+    print("AddRobot")
+
+    ### TakeArm
+    Command = "TakeArm"
+    Param = [0,0]
+    m_bcapclient.robot_execute(HRobot,Command,Param)
+    print("TakeArm")
+
+    ### Set Parameters
+    #Interpolation
+    Comp=1
+
+    eng = Dispatch("CAO.CaoEngine")
+    ctrl = eng.Workspaces(0).AddController(
+        "", "CaoProv.DENSO.RC8", "", "Server=" + "192.168.0.1"
+    )
+
+    caoRobot = ctrl.AddRobot("robot0", "")
+
+    m_bcapclient.robot_execute(HRobot, "GiveArm")
+    m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
+    caoRobot.Execute("Motor", [1, 0])
+
+    ##(open in mm, speed)
+
+    ctrl.Execute("HandMoveA", [input_value, 25])
+
+    caoRobot.Execute("GiveArm")
+    m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
+    m_bcapclient.robot_execute(HRobot, "Motor", [1, 0])
+
 
 class App(Tk):
     def __init__(self):
@@ -82,279 +163,24 @@ class App(Tk):
 
 
     def start_position(self):
-        ### set IP Address , Port number and Timeout of connected RC8
-        host = "192.168.0.1"
-        port = 5007
-        timeout = 2000
-
-        ### Connection processing of tcp communication
-        m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
-        print("Open Connection")
-
-        ### start b_cap Service
-        m_bcapclient.service_start("")
-        print("Send SERVICE_START packet")
-
-        ### set Parameter
-        Name = ""
-        Provider="CaoProv.DENSO.VRC"
-        Machine = ("localhost")
-        Option = ("")
-
-        ### Connect to RC8 (RC8(VRC)provider)
-        hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
-        print("Connect RC8")
-        ### get Robot Object Handl
-        HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
-        print("AddRobot")
-
-        ### TakeArm
-        Command = "TakeArm"
-        Param = [0,0]
-        m_bcapclient.robot_execute(HRobot,Command,Param)
-        print("TakeArm")
-
-        ### Set Parameters
-        #Interpolation
-        Comp=1  
-
-        Pose ="@P J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
-        m_bcapclient.robot_move(HRobot,Comp,Pose,"")
-        print("Complete Move P,@P P[1]")
-
-
-        ### set Parameter
-        Name = ""
-        Provider="CaoProv.DENSO.VRC"
-        Machine = ("localhost")
-        Option = ("")
-
-        eng = Dispatch("CAO.CaoEngine")
-        ctrl = eng.Workspaces(0).AddController(
-         "", "CaoProv.DENSO.RC8", "", "Server=" + "192.168.0.1"
-        )
-
-        caoRobot = ctrl.AddRobot("robot0", "")
-
-        m_bcapclient.robot_execute(HRobot, "GiveArm")
-        m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
-        caoRobot.Execute("Motor", [1, 0])
-
-        ##(open in mm, speed)
-        ctrl.Execute("HandMoveA", [self.hand.get(), 25]) ###################################################################
-
-        caoRobot.Execute("GiveArm")
-        m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
-        m_bcapclient.robot_execute(HRobot, "Motor", [1, 0])
-
-
-        ###Give Arm
-        Command = "GiveArm"
-        Param = None
-        m_bcapclient.robot_execute(HRobot,Command,Param)
-        print("GiveArm")
-        #Disconnect
-        if(HRobot != 0):
-            m_bcapclient.robot_release(HRobot)
-            print("Release Robot Object")
-        #End If
-        if(hCtrl != 0):
-            m_bcapclient.controller_disconnect(hCtrl)
-            print("Release Controller")
-        #End If
-        m_bcapclient.service_stop()
-        print("B-CAP service Stop")
-
        
-                        
-        self.page.button_open.config(state=DISABLED)
 
-        ##AGGIUNGI CONTROLLI EVENTUALI IN CASO SI VOGLIANO CAMBIARE LE POSIZIONI INIZIALI 
+        try:
+            Position ="J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
+            move_arm_to_position(Position)
+
+            input_value = self.hand.get()
+            move_hand(input_value)
+               
+            self.page.button_open.config(state=DISABLED)
+        except:
+            Page1.print_error("Errore di connessione")
+
+            ##AGGIUNGI CONTROLLI EVENTUALI IN CASO SI VOGLIANO CAMBIARE LE POSIZIONI INIZIALI 
         
 
 
     def move(self, joint, var):
-
-        ### set IP Address , Port number and Timeout of connected RC8
-        host = "192.168.0.1"
-        port = 5007
-        timeout = 2000
-
-        ### Connection processing of tcp communication
-        m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
-        print("Open Connection")
-
-        ### start b_cap Service
-        m_bcapclient.service_start("")
-        print("Send SERVICE_START packet")
-
-        ### set Parameter
-        Name = ""
-        Provider="CaoProv.DENSO.VRC"
-        Machine = ("localhost")
-        Option = ("")
-
-        ### Connect to RC8 (RC8(VRC)provider)
-        hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
-        print("Connect RC8")
-        ### get Robot Object Handl
-        HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
-        print("AddRobot")
-
-        ### TakeArm
-        Command = "TakeArm"
-        Param = [0,0]
-        m_bcapclient.robot_execute(HRobot,Command,Param)
-        print("TakeArm")
-
-        ### Set Parameters
-        #Interpolation
-        Comp=1
-
-        '''
-        if(joint == 1 and var == 0):
-            j = self.j1.get() - int(self.passiBase[joint-1] * self.passoMult.get())
-            if j < self.minimi[joint-1]:
-                j = self.minimi[joint-1]
-            self.j1.set(j)
-           
-
-        elif(joint == 1 and var == 1):
-            j = self.j1.get() + int(self.passiBase[joint-1] * self.passoMult.get())
-            if j > self.massimi[joint-1]:
-                j = self.massimi[joint-1]
-            self.j1.set(j)
-
-
-        elif(joint == 2 and var == 0):
-            j = self.j2.get() - int(self.passiBase[joint-1] * self.passoMult.get())
-            if j < self.minimi[joint-1]:
-                j = self.minimi[joint-1]
-            self.j2.set(j)
-
-        elif(joint == 2 and var == 1):
-            j = self.j2.get() + int(self.passiBase[joint-1] * self.passoMult.get())
-            if j > self.massimi[joint-1]:
-                j = self.massimi[joint-1]
-            self.j2.set(j)
-
-
-        elif(joint == 3 and var == 0):
-            j = self.j3.get() - int(self.passiBase[joint-1] * self.passoMult.get())
-            if j < self.minimi[joint-1]:
-                j = self.minimi[joint-1]
-            self.j3.set(j)
-
-        elif(joint == 3 and var == 1):
-            j = self.j3.get() + int(self.passiBase[joint-1] * self.passoMult.get())
-            if j > self.massimi[joint-1]:
-                j = self.massimi[joint-1]
-            self.j3.set(j)
-
-
-        elif(joint == 4 and var == 0):
-            j = self.j4.get() - int(self.passiBase[joint-1] * self.passoMult.get())
-            if j < self.minimi[joint-1]:
-                j = self.minimi[joint-1]
-            self.j4.set(j)
-
-        elif(joint == 4 and var == 1):
-            j = self.j4.get() + int(self.passiBase[joint-1] * self.passoMult.get())
-            if j > self.massimi[joint-1]:
-                j = self.massimi[joint-1]
-            self.j4.set(j)
-        
-
-        elif(joint == 5 and var == 0):
-            j = self.j5.get() - int(self.passiBase[joint-1] * self.passoMult.get())
-            if j < self.minimi[joint-1]:
-                j = self.minimi[joint-1]
-            self.j5.set(j)
-
-        elif(joint == 5 and var == 1):
-            j = self.j5.get() + int(self.passiBase[joint-1] * self.passoMult.get())
-            if j > self.massimi[joint-1]:
-                j = self.massimi[joint-1]
-            self.j5.set(j)
-        
-
-        elif(joint == 6 and var == 0):
-            j = self.j6.get() - int(self.passiBase[joint-1] * self.passoMult.get())
-            if j < self.minimi[joint-1]:
-                j = self.minimi[joint-1]
-            self.j6.set(j)
-
-        elif(joint == 6 and var == 1):
-            j = self.j6.get() + int(self.passiBase[joint-1] * self.passoMult.get())
-            if j > self.massimi[joint-1]:
-                j = self.massimi[joint-1]
-            self.j6.set(j)
-
-
-        if self.j1.get() == self.minimi[0]:
-                self.page.button_1s.config(state=DISABLED)
-        else: 
-                self.page.button_1s.config(state=NORMAL)
-
-        if self.j1.get() == self.massimi[0]:
-                self.page.button_1d.config(state=DISABLED)
-        else: 
-                self.page.button_1d.config(state=NORMAL)
-        
-        if self.j2.get() == self.minimi[1]:
-                self.page.button_2s.config(state=DISABLED)
-        else: 
-                self.page.button_2s.config(state=NORMAL)
-
-        if self.j2.get() == self.massimi[1]:
-                self.page.button_2d.config(state=DISABLED)
-        else: 
-                self.page.button_2d.config(state=NORMAL)
-         
-
-        if self.j3.get() == self.minimi[2]:
-                self.page.button_3s.config(state=DISABLED)
-        else: 
-                self.page.button_3s.config(state=NORMAL)
-
-        if self.j3.get() == self.massimi[2]:
-                self.page.button_3d.config(state=DISABLED)
-        else: 
-                self.page.button_3d.config(state=NORMAL)
-         
-
-        if self.j4.get() == self.minimi[3]:
-                self.page.button_4s.config(state=DISABLED)
-        else: 
-                self.page.button_4s.config(state=NORMAL)
-
-        if self.j4.get() == self.massimi[3]:
-                self.page.button_4d.config(state=DISABLED)
-        else: 
-                self.page.button_4d.config(state=NORMAL)
-         
-
-        if self.j5.get() == self.minimi[4]:
-                self.page.button_5s.config(state=DISABLED)
-        else: 
-                self.page.button_5s.config(state=NORMAL)
-
-        if self.j5.get() == self.massimi[4]:
-                self.page.button_5d.config(state=DISABLED)
-        else: 
-                self.page.button_5d.config(state=NORMAL)
-         
-
-        if self.j6.get() == self.minimi[5]:
-                self.page.button_6s.config(state=DISABLED)
-        else: 
-                self.page.button_6s.config(state=NORMAL)
-
-        if self.j6.get() == self.massimi[5]:
-                self.page.button_6d.config(state=DISABLED)
-        else: 
-                self.page.button_6d.config(state=NORMAL)
-        '''
 
         if (joint is self.j1):
             index=0
@@ -410,27 +236,8 @@ class App(Tk):
         
          
 
-        Pose ="@P J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
-        m_bcapclient.robot_move(HRobot,Comp,Pose,"")
-        print("Complete Move P,@P P[1]")
-
-
-        ###Give Arm
-        Command = "GiveArm"
-        Param = None
-        m_bcapclient.robot_execute(HRobot,Command,Param)
-        print("GiveArm")
-        #Disconnect
-        if(HRobot != 0):
-            m_bcapclient.robot_release(HRobot)
-            print("Release Robot Object")
-        #End If
-        if(hCtrl != 0):
-            m_bcapclient.controller_disconnect(hCtrl)
-            print("Release Controller")
-        #End If
-        m_bcapclient.service_stop()
-        print("B-CAP service Stop")
+        Position ="@P J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
+        move_arm_to_position(Position)
 
     def modify_passo_mult(self, var):
         if var == 0:
@@ -438,7 +245,7 @@ class App(Tk):
         elif var == 1:
             self.passoMult.set(self.passoMult.get() + 0.5)
         else:
-            print_error("Invalid var value")
+            Page1.print_error("Invalid var value")
 
         if self.passoMult.get() == 0.5:
             self.page.button_passos.config(state=DISABLED)
@@ -453,55 +260,7 @@ class App(Tk):
 
 
     def close_hand(self):
-          
-           ### set IP Address , Port number and Timeout of connected RC8
-        host = "192.168.0.1"
-        port = 5007
-        timeout = 2000
-
-        ### Connection processing of tcp communication
-        m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
-        print("Open Connection")
-
-        ### start b_cap Service
-        m_bcapclient.service_start("")
-        print("Send SERVICE_START packet")
-
-        ### set Parameter
-        Name = ""
-        Provider="CaoProv.DENSO.VRC"
-        Machine = ("localhost")
-        Option = ("")
-
-        ### Connect to RC8 (RC8(VRC)provider)
-        hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
-        print("Connect RC8")
-        ### get Robot Object Handl
-        HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
-        print("AddRobot")
-
-        ### TakeArm
-        Command = "TakeArm"
-        Param = [0,0]
-        m_bcapclient.robot_execute(HRobot,Command,Param)
-        print("TakeArm")
-
-        ### Set Parameters
-        #Interpolation
-        Comp=1
-
-        eng = Dispatch("CAO.CaoEngine")
-        ctrl = eng.Workspaces(0).AddController(
-         "", "CaoProv.DENSO.RC8", "", "Server=" + "192.168.0.1"
-        )
-
-        caoRobot = ctrl.AddRobot("robot0", "")
-
-        m_bcapclient.robot_execute(HRobot, "GiveArm")
-        m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
-        caoRobot.Execute("Motor", [1, 0])
-
-        ##(open in mm, speed)
+      
         h = self.hand.get() - 3
         if h < 0:
             h = 0
@@ -512,63 +271,11 @@ class App(Tk):
 
         self.page.button_open.config(state=NORMAL)
 
-        ctrl.Execute("HandMoveA", [self.hand.get(), 25])
-
-        caoRobot.Execute("GiveArm")
-        m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
-        m_bcapclient.robot_execute(HRobot, "Motor", [1, 0])
-
+        input_value=self.hand.get()
+        move_hand(input_value)
 
     def open_hand(self):
           
-           ### set IP Address , Port number and Timeout of connected RC8
-        host = "192.168.0.1"
-        port = 5007
-        timeout = 2000
-
-        ### Connection processing of tcp communication
-        m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
-        print("Open Connection")
-
-        ### start b_cap Service
-        m_bcapclient.service_start("")
-        print("Send SERVICE_START packet")
-
-        ### set Parameter
-        Name = ""
-        Provider="CaoProv.DENSO.VRC"
-        Machine = ("localhost")
-        Option = ("")
-
-        ### Connect to RC8 (RC8(VRC)provider)
-        hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
-        print("Connect RC8")
-        ### get Robot Object Handl
-        HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
-        print("AddRobot")
-
-        ### TakeArm
-        Command = "TakeArm"
-        Param = [0,0]
-        m_bcapclient.robot_execute(HRobot,Command,Param)
-        print("TakeArm")
-
-        ### Set Parameters
-        #Interpolation
-        Comp=1
-
-        eng = Dispatch("CAO.CaoEngine")
-        ctrl = eng.Workspaces(0).AddController(
-         "", "CaoProv.DENSO.RC8", "", "Server=" + "192.168.0.1"
-        )
-
-        caoRobot = ctrl.AddRobot("robot0", "")
-
-        m_bcapclient.robot_execute(HRobot, "GiveArm")
-        m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
-        caoRobot.Execute("Motor", [1, 0])
-
-        ##(open in mm, speed)
         self.hand.set(self.hand.get() + 3)
 
         h = self.hand.get() + 3
@@ -580,11 +287,8 @@ class App(Tk):
             self.page.button_open.config(state=DISABLED)
         self.page.button_close.config(state=NORMAL)
 
-        ctrl.Execute("HandMoveA", [self.hand.get(), 25])
-
-        caoRobot.Execute("GiveArm")
-        m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
-        m_bcapclient.robot_execute(HRobot, "Motor", [1, 0])
+        input_value=self.hand.get()
+        move_hand(input_value)
 
 ##################### GESTURE#####################
 ############################################################################################################
@@ -644,7 +348,7 @@ class App(Tk):
        
 
         # Read labels ###########################################################
-        with open('model/keypoint_classifier/keypoint_classifier_label.csv',
+        with open('model2/keypoint_classifier/keypoint_classifier_label.csv',
                 encoding='utf-8-sig') as f:
             keypoint_classifier_labels = csv.reader(f)
             keypoint_classifier_labels = [
@@ -732,11 +436,11 @@ class App(Tk):
                         b=b+1
                     if segno == "ThumbUp":
                         c=c+1
-                    if segno == "3Fingers":
-                        d=d+1
-                    if segno == "Victory":
-                        e=e+1
                     if segno == "Shaker":
+                        d=d+1
+                    if segno == "Horns":
+                        e=e+1
+                    if segno == "3Fingers":
                         f=f+1
                     if segno == "Open":
                         g=g+1
@@ -744,72 +448,7 @@ class App(Tk):
                         h=h+1
 
 
-                    '''
-
-                    if a >=robustezza:
-                        joint = 1
-                        a=0
-                        b=0
-                        c=0
-                        d=0
-                        e=0
-                        f=0
-                        print("SONO ENTRATO")
-
-                    if b>=robustezza:
-                        joint = 2 
-                        a=0
-                        b=0
-                        c=0
-                        d=0
-                        e=0
-                        f=0
-
-                    if c>=robustezza:
-                        joint = 3
-                        a=0
-                        b=0
-                        c=0
-                        d=0
-                        e=0
-                        f=0
-
-                    if d>=robustezza:
-                        joint = 4 
-                        a=0
-                        b=0
-                        c=0
-                        d=0
-                        e=0
-                        f=0
-                    if e>=robustezza:
-                        joint = 5
-                        a=0
-                        b=0
-                        c=0
-                        d=0
-                        e=0
-                        f=0
-
-                    if f>=robustezza:
-                        joint = 6
-                        a=0
-                        b=0
-                        c=0
-                        d=0
-                        e=0
-                        f=0
-
-                    
-                    if(joint != 0):
-                        if dxsx == "Right":
-                            self.move(joint, 1)
-                            print("mi sono mosso")
-                        if dxsx == "Left":
-                            self.move(joint, 0)
-                            print("mi sono mosso")
-                        joint=0
-                    '''
+                  
                         
                     if a >=robustezza:
                         joint = self.j1
@@ -958,7 +597,7 @@ class App(Tk):
         if mode == 0:
             pass
         if mode == 1 and (0 <= number <= 9):
-            csv_path = 'model/keypoint_classifier/keypoint.csv'
+            csv_path = 'model2/keypoint_classifier/keypoint.csv'
             with open(csv_path, 'a', newline="") as f:
                 writer = csv.writer(f)
                 writer.writerow([number, *landmark_list])
@@ -1179,24 +818,7 @@ class App(Tk):
 
     
 
-    '''
-    def draw_info(self, image, fps, mode, number):
-        cv.putText(image, "FPS:" + str(fps), (10, 30), cv.FONT_HERSHEY_SIMPLEX,
-                1.0, (0, 0, 0), 4, cv.LINE_AA)
-        cv.putText(image, "FPS:" + str(fps), (10, 30), cv.FONT_HERSHEY_SIMPLEX,
-                1.0, (255, 255, 255), 2, cv.LINE_AA)
-
-        mode_string = ['Logging Key Point']
-        if 1 <= mode <= 2:
-            cv.putText(image, "MODE:" + mode_string[mode - 1], (10, 90),
-                    cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
-                    cv.LINE_AA)
-            if 0 <= number <= 9:
-                cv.putText(image, "NUM:" + str(number), (10, 110),
-                        cv.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1,
-                        cv.LINE_AA)
-        return image
-    '''
+    
     def draw_info(self, image, fps, mode, number):
         cv.putText(image, "J1:" + str(self.j1.get()) + " J2:" + str(self.j2.get()) + " J3:" + str(self.j3.get()) + " J4:" + str(self.j4.get())
                    + " J5:" + str(self.j5.get()) + " J6:" + str(self.j6.get()) , (10, 30), cv.FONT_HERSHEY_SIMPLEX,
@@ -1219,155 +841,196 @@ class App(Tk):
         
 ############################################################################################################        
   
+    def update_message(self, message):
+        """Aggiorna il testo del message_label nella pagina."""
+        self.page.message_label.config(text=message)
+    '''
+    def use_voice (self):
+        text = ""
+        voice = True
+        while voice: 
+            recognizer_instance = sr.Recognizer()
+            with sr.Microphone() as source:
+                recognizer_instance.adjust_for_ambient_noise(source)
+                print("Cobotta è in ascolto: scegliere un giunto")
+                audio = recognizer_instance.listen(source)
+                text = recognizer_instance.recognize_google(audio, language="it-IT")
+            print(text)
+            
+            joint_selected = False
+            joint_mapping = {
+                "uno": self.j1,
+                "due": self.j2,
+                "tre": self.j3,
+                "quattro": self.j4,
+                "cinque": self.j5,
+                "sei": self.j6,
+            }
 
+            for key, joint_var in joint_mapping.items():
+                if re.search(rf"\b{key}\b", text.lower()):
+                    j = joint_var
+                    joint_selected = True
+                    print(f"Giunto selezionato: {key}")
+                    break  
 
-  
+            if re.search(rf"\besci\b", text.lower()):
+                voice = False
+            
+            while joint_selected:
+                recognizer_instance = sr.Recognizer()
+                with sr.Microphone() as source:
+                    recognizer_instance.adjust_for_ambient_noise(source)
+                    print("Cobotta è in ascolto: scegliere una direzione")
+                    audio = recognizer_instance.listen(source)
+                    text = recognizer_instance.recognize_google(audio, language="it-IT")
+                print(text)
+                if re.search(r"\bdestra\b", text.lower()):
+                    self.move(j, 1)
+                if re.search(r"\bsinistra\b", text.lower()):
+                    self.move(j, 0)
+                if re.search(r"\bstop\b", text.lower()):
+                    joint_selected = False
+    '''
 
-class Page1(Frame):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.pack(pady=5)
-
+    def stretch_arm(self):
+       
+        if self.j2.get() == self.massimi[1] or self.j3.get() == self.minimi[2]:
+            return
         
-        self.label_j1 = Label(self, text='J1', font=('calibre', 10, 'bold'))
-        self.entry_j1 = Entry(self, textvariable=parent.j1, font=('calibre', 10, 'normal'))
+        j2 = self.j2.get() + int(self.passiBase[1] * self.passoMult.get())
+        if j2 > self.massimi[1]:
+            j2 = self.massimi[1]
+        self.j2.set(j2)
+
+        j3 = self.j3.get() - int(self.passiBase[2] * self.passoMult.get())
+        if j3 < self.minimi[2]:
+            j3 = self.minimi[2]
+        self.j3.set(j3)
+
+
+        if self.j2.get() == self.massimi[1]:
+                self.page.button_2d.config(state=DISABLED)
+
+        if not(self.j2.get() == self.minimi[1]):
+                self.page.button_2s.config(state=NORMAL)
+
+        if self.j3.get() == self.minimi[2]:
+                self.page.button_3s.config(state=DISABLED)
         
-        self.label_j2 = Label(self, text='J2', font=('calibre', 10, 'bold'))
-        self.entry_j2 = Entry(self, textvariable=parent.j2, font=('calibre', 10, 'normal'))
+        if not(self.j3.get() == self.massimi[2]):
+                self.page.button_3d.config(state=NORMAL)
         
-        self.label_j3 = Label(self, text='J3', font=('calibre', 10, 'bold'))
-        self.entry_j3 = Entry(self, textvariable=parent.j3, font=('calibre', 10, 'normal'))
+         
+
+        Position ="@P J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
+        move_arm_to_position(Position)
+
+
+    def use_voice(self):
+        text = ""
+        joint_text=""
+        voice = True
+        joint_selected = False
+        joint_mapping = {
+            "uno": self.j1,
+            "1": self.j1,
+            "due": self.j2,
+            "2": self.j2,
+            "tre": self.j3,
+            "3": self.j3,
+            "quattro": self.j4,
+            "4": self.j4,
+            "cinque": self.j5,
+            "5": self.j5,
+            "sei": self.j6,
+            "6": self.j6,
+        }
+
+        while voice:
+            recognizer_instance = sr.Recognizer()
+            with sr.Microphone() as source:
+                recognizer_instance.adjust_for_ambient_noise(source)
+                if(not joint_selected):
+                    self.update_message("Cobotta in ascolto...")
+                else:
+                    self.update_message(f"Cobotta in ascolto... Giunto: {joint_text}")
+                
+                try:
+                    audio = recognizer_instance.listen(source, phrase_time_limit=60)
+                    text = recognizer_instance.recognize_google(audio, language="it-IT")
+                    print(text)
+                except sr.UnknownValueError:
+                    self.update_message("Non ho capito, riprova...")
+                    continue
+                except sr.RequestError as e:
+                    self.update_message(f"Errore di connessione al servizio di riconoscimento vocale: {e}")
+                    joint_selected = False
+                    break
+                
+                increasing_words = ["destra", "giù", "scendi", "più", "aumenta"]
+                decreasing_words = ["sinistra", "su", "sali" ,"meno", "diminuisci"]
+                stop_words = ["stop", "esci", "ferma", "basta", "interrompi"]   
+                open_words = ["apri", "apriti", "lascia", "rilascia", "molla"]
+                close_words = ["chiudi", "chiuditi", "stringi", "prendi"]
+                stretch_words = ["allunga", "allungati", "avanti", "estendi"]
+
+                words = text.lower().split()
+                for word in words:
+                    if word in increasing_words:
+                        if joint_selected:
+                            self.update_message("Muovo il giunto...")
+                            self.move(j, 1)
+                        else:
+                            self.update_message("Prima seleziona un giunto")
+                    elif word in decreasing_words:
+                        if joint_selected:
+                            self.update_message("Muovo il giunto...")
+                            self.move(j, 0)
+                        else:
+                            self.update_message("Prima seleziona un giunto")
+
+                    elif word in stretch_words:
+                        self.stretch_arm()
+                        self.update_message("Allungo il braccio...")
+
+                    elif word in joint_mapping.keys():
+                        j = joint_mapping[word]
+                        joint_selected = True
+                        self.update_message(f"Giunto selezionato: {word}")
+                        joint_text = word
+
+                    elif word in open_words:
+                        self.open_hand()
+                        self.update_message("Apro la mano...")
+
+                    elif word in close_words:
+                        self.close_hand()
+                        self.update_message("Chiudo la mano...")
+
+                    elif word in stop_words:
+                        joint_selected = False
+                        voice = False
+                        self.update_message("Smetto di ascoltare...")
+                        self.update_message("")
+                        break
+
+#################################################
         
-        self.label_j4 = Label(self, text='J4', font=('calibre', 10, 'bold'))
-        self.entry_j4 = Entry(self, textvariable=parent.j4, font=('calibre', 10, 'normal'))
-          
-        self.label_j5 = Label(self, text='J5', font=('calibre', 10, 'bold'))
-        self.entry_j5 = Entry(self, textvariable=parent.j5, font=('calibre', 10, 'normal'))
-        
-        self.label_j6 = Label(self, text='J6', font=('calibre', 10, 'bold'))
-        self.entry_j6 = Entry(self, textvariable=parent.j6, font=('calibre', 10, 'normal'))
+    def camera_button(self):
+        t=threading.Thread(target=self.start_gesture)
+        t.daemon=True
+        t.start()
 
-        self.label_j1.grid(row=0, column=1, sticky='e', padx=5, pady=5)
-        self.entry_j1.grid(row=0, column=2,sticky='w', padx=5, pady=5)
-
-        self.label_j2.grid(row=1, column=1, sticky='e', padx=5, pady=5)
-        self.entry_j2.grid(row=1, column=2,sticky='w', padx=5, pady=5)       
-        
-        self.label_j3.grid(row=2, column=1, sticky='e', padx=5, pady=5)
-        self.entry_j3.grid(row=2, column=2,sticky='w', padx=5, pady=5)       
-        
-        self.label_j4.grid(row=3, column=1, sticky='e', padx=5, pady=5)
-        self.entry_j4.grid(row=3, column=2,sticky='w', padx=5, pady=5)        
-        
-        self.label_j5.grid(row=4, column=1, sticky='e', padx=5, pady=5)
-        self.entry_j5.grid(row=4, column=2,sticky='w', padx=5, pady=5)        
-        
-        self.label_j6.grid(row=5, column=1, sticky='e', padx=5, pady=5)
-        self.entry_j6.grid(row=5, column=2,sticky='w', padx=5, pady=5) 
-
-        # Main action buttons
-        '''
-        self.button_1s = Button(self, text='<', command=lambda: parent.move(1, 0))
-        self.button_1d = Button(self, text='>', command=lambda: parent.move(1, 1))
-
-        self.button_2s = Button(self, text='<', command=lambda: parent.move(2, 0))
-        self.button_2d = Button(self, text='>', command=lambda: parent.move(2, 1))
-
-        self.button_3s = Button(self, text='<', command=lambda: parent.move(3, 0))
-        self.button_3d = Button(self, text='>', command=lambda: parent.move(3, 1))
-
-        self.button_4s = Button(self, text='<', command=lambda: parent.move(4, 0))
-        self.button_4d = Button(self, text='>', command=lambda: parent.move(4, 1))
-
-        self.button_5s = Button(self, text='<', command=lambda: parent.move(5, 0))
-        self.button_5d = Button(self, text='>', command=lambda: parent.move(5, 1))
-
-        self.button_6s = Button(self, text='<', command=lambda: parent.move(6, 0))
-        self.button_6d = Button(self, text='>', command=lambda: parent.move(6, 1))
-        '''
-        self.button_1s = Button(self, text='<', command=lambda: parent.move(parent.j1, 0))
-        self.button_1d = Button(self, text='>', command=lambda: parent.move(parent.j1, 1))
-
-        self.button_2s = Button(self, text='<', command=lambda: parent.move(parent.j2, 0))
-        self.button_2d = Button(self, text='>', command=lambda: parent.move(parent.j2, 1))
-
-        self.button_3s = Button(self, text='<', command=lambda: parent.move(parent.j3, 0))
-        self.button_3d = Button(self, text='>', command=lambda: parent.move(parent.j3, 1))
-
-        self.button_4s = Button(self, text='<', command=lambda: parent.move(parent.j4, 0))
-        self.button_4d = Button(self, text='>', command=lambda: parent.move(parent.j4, 1))
-
-        self.button_5s = Button(self, text='<', command=lambda: parent.move(parent.j5, 0))
-        self.button_5d = Button(self, text='>', command=lambda: parent.move(parent.j5, 1))
-
-        self.button_6s = Button(self, text='<', command=lambda: parent.move(parent.j6, 0))
-        self.button_6d = Button(self, text='>', command=lambda: parent.move(parent.j6, 1))
-
-        
-
-        self.button_1s.grid(row=0, column=0, columnspan=1, pady=10)
-        self.button_1d.grid(row=0, column=3, columnspan=1, pady=10)
-
-        self.button_2s.grid(row=1, column=0, columnspan=1, pady=10)
-        self.button_2d.grid(row=1, column=3, columnspan=1, pady=10)
-
-        self.button_3s.grid(row=2, column=0, columnspan=1, pady=10)
-        self.button_3d.grid(row=2, column=3, columnspan=1, pady=10)
-
-        self.button_4s.grid(row=3, column=0, columnspan=1, pady=10)
-        self.button_4d.grid(row=3, column=3, columnspan=1, pady=10)
-
-        self.button_5s.grid(row=4, column=0, columnspan=1, pady=10)
-        self.button_5d.grid(row=4, column=3, columnspan=1, pady=10)
-
-        self.button_6s.grid(row=5, column=0, columnspan=1, pady=10)
-        self.button_6d.grid(row=5, column=3, columnspan=1, pady=10)
+    def voice_button(self):
+        t=threading.Thread(target=self.use_voice)
+        t.daemon=True
+        t.start()
+            
 
 
-        self.label_passoMult = Label(self, text='Passo: ', font=('calibre', 10, 'bold'))
-        self.entry_passoMult = Entry(self, textvariable=parent.passoMult, font=('calibre', 10, 'normal'))
-
-        self.label_passoMult.grid(row=6, column=2, sticky='w', padx=5, pady=5)
-        self.entry_passoMult.grid(row=7, column=2, sticky='w', padx=5, pady=5) 
-
-        
-        self.button_passos = Button(self, text='<', command=lambda: parent.modify_passo_mult(0))
-        self.button_passod = Button(self, text='>', command=lambda: parent.modify_passo_mult(1))
-
-        self.button_passos.grid(row=7, column=0, columnspan=1, pady=10)
-        self.button_passod.grid(row=7, column=3, columnspan=1, pady=10)
-
-        
-
-        self.button_1s.grid(row=0, column=0, columnspan=1, pady=10)
-        self.button_1d.grid(row=0, column=3, columnspan=1, pady=10)
-
-        self.entry_j1.config(state='readonly')
-        self.entry_j2.config(state='readonly')
-        self.entry_j3.config(state='readonly')
-        self.entry_j4.config(state='readonly')
-        self.entry_j5.config(state='readonly')
-        self.entry_j6.config(state='readonly')
-        self.entry_passoMult.config(state='readonly')
 
 
-        self.button_open = Button(self, text='OPEN', command=parent.open_hand)
-        self.button_open.grid(row=34, column=0, columnspan=1, pady=10)
-
-
-        self.button_close = Button(self, text='CLOSE', command=parent.close_hand)
-        self.button_close.grid(row=34, column=3, columnspan=1, pady=10)
-
-        self.label_h = Label(self, text='H', font=('calibre', 10, 'bold'))
-        self.entry_h = Entry(self, textvariable=parent.hand, font=('calibre', 10, 'normal'))
-        self.label_h.grid(row=34, column=1, sticky='e', padx=5, pady=5)
-        self.entry_h.grid(row=34, column=2, sticky='w', padx=5, pady=5)
-        self.entry_h.config(state='readonly')
-
-        self.button_camera = Button(self, text='OPEN CAMERA', command=lambda: threading.Thread(target=parent.start_gesture).start())
-        self.button_camera.grid(row=35, column=0, columnspan=1, pady=10)
-
-        
 
 
 app = App()
