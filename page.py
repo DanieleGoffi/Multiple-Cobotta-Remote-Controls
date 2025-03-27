@@ -9,6 +9,7 @@ class Page1(Frame):
         showerror("Error", message)
         #raise Exception(message)
 
+    
     def __init__(self, parent):
         super().__init__(parent)
         self.pack(pady=5)
@@ -52,23 +53,23 @@ class Page1(Frame):
 
         # Main action buttons
        
-        self.button_1s = Button(self, text='<', command=lambda: parent.move(parent.j1, 0))
-        self.button_1d = Button(self, text='>', command=lambda: parent.move(parent.j1, 1))
+        self.button_1s = Button(self, text='<', command=lambda: parent.move_button(parent.j1, 0))
+        self.button_1d = Button(self, text='>', command=lambda: parent.move_button(parent.j1, 1))
 
-        self.button_2s = Button(self, text='<', command=lambda: parent.move(parent.j2, 0))
-        self.button_2d = Button(self, text='>', command=lambda: parent.move(parent.j2, 1))
+        self.button_2s = Button(self, text='<', command=lambda: parent.move_button(parent.j2, 0))
+        self.button_2d = Button(self, text='>', command=lambda: parent.move_button(parent.j2, 1))
 
-        self.button_3s = Button(self, text='<', command=lambda: parent.move(parent.j3, 0))
-        self.button_3d = Button(self, text='>', command=lambda: parent.move(parent.j3, 1))
+        self.button_3s = Button(self, text='<', command=lambda: parent.move_button(parent.j3, 0))
+        self.button_3d = Button(self, text='>', command=lambda: parent.move_button(parent.j3, 1))
 
-        self.button_4s = Button(self, text='<', command=lambda: parent.move(parent.j4, 0))
-        self.button_4d = Button(self, text='>', command=lambda: parent.move(parent.j4, 1))
+        self.button_4s = Button(self, text='<', command=lambda: parent.move_button(parent.j4, 0))
+        self.button_4d = Button(self, text='>', command=lambda: parent.move_button(parent.j4, 1))
 
-        self.button_5s = Button(self, text='<', command=lambda: parent.move(parent.j5, 0))
-        self.button_5d = Button(self, text='>', command=lambda: parent.move(parent.j5, 1))
+        self.button_5s = Button(self, text='<', command=lambda: parent.move_button(parent.j5, 0))
+        self.button_5d = Button(self, text='>', command=lambda: parent.move_button(parent.j5, 1))
 
-        self.button_6s = Button(self, text='<', command=lambda: parent.move(parent.j6, 0))
-        self.button_6d = Button(self, text='>', command=lambda: parent.move(parent.j6, 1))
+        self.button_6s = Button(self, text='<', command=lambda: parent.move_button(parent.j6, 0))
+        self.button_6d = Button(self, text='>', command=lambda: parent.move_button(parent.j6, 1))
 
         
 
@@ -132,10 +133,17 @@ class Page1(Frame):
         self.entry_h.config(state='readonly')
 
         self.button_camera = Button(self, text='OPEN CAMERA', command=parent.camera_button)
-        self.button_camera.grid(row=35, column=0, columnspan=1, pady=10)
+        self.button_camera.grid(row=35, column=0, columnspan=4, pady=10)
 
-        self.button_mic = Button(self, text='LISTEN', command=parent.voice_button)
-        self.button_mic.grid(row=35, column=2, columnspan=1, pady=10)
+        self.message_cam_label = Label(self, text='', font=('calibre', 10, 'bold'), fg='blue', wraplength=400, justify='left')
+        self.message_cam_label.grid(row=36, column=0, columnspan=4, pady=10)
 
-        self.message_label = Label(self, text='', font=('calibre', 10, 'bold'), fg='blue', wraplength=400, justify='left')
-        self.message_label.grid(row=36, column=0, columnspan=4, pady=10)
+        self.button_mic = Button(self, text='OPEN MIC', command=parent.voice_button)
+        self.button_mic.grid(row=37, column=0, columnspan=4, pady=10)
+
+
+        self.message_mic_label = Label(self, text='', font=('calibre', 10, 'bold'), fg='blue', wraplength=400, justify='left')
+        self.message_mic_label.grid(row=38, column=0, columnspan=4, pady=10)
+
+        self.button_reset = Button(self, text='STOP', command=parent.close_app, fg='red')
+        self.button_reset.grid(row=39, column=3, columnspan=1, pady=10)

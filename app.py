@@ -1,4 +1,5 @@
 #import tracemalloc
+import time
 from tkinter import *
 from win32com.client import Dispatch
 
@@ -29,115 +30,14 @@ import re
 from page import Page1
 
 
-def move_arm_to_position(Position):
-
-    host = "192.168.0.1"
-    port = 5007
-    timeout = 2000
-
-    m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
-    #print("Open Connection")
-
-    m_bcapclient.service_start("")
-    #print("Send SERVICE_START packet")
-
-    Name = ""
-    Provider="CaoProv.DENSO.VRC"
-    Machine = ("localhost")
-    Option = ("")
-
-    hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
-    #print("Connect RC8")
-    HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
-    #print("AddRobot")
-
-    Command = "TakeArm"
-    Param = [0,0]
-    m_bcapclient.robot_execute(HRobot,Command,Param)
-    #print("TakeArm")
-
-    Comp=1
-    m_bcapclient.robot_move(HRobot,Comp,Position,"")
-    #print("Complete Move")
-
-
-    Command = "GiveArm"
-    Param = None
-    m_bcapclient.robot_execute(HRobot,Command,Param)
-    #print("GiveArm")
-    
-    if(HRobot != 0):
-        m_bcapclient.robot_release(HRobot)
-        #print("Release Robot Object")
-    
-    if(hCtrl != 0):
-        m_bcapclient.controller_disconnect(hCtrl)
-        #print("Release Controller")
-    
-    m_bcapclient.service_stop()
-    #print("B-CAP service Stop")
-
-def move_hand(input_value):
-    host = "192.168.0.1"
-    port = 5007
-    timeout = 2000
-
-    ### Connection processing of tcp communication
-    m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
-    print("Open Connection")
-
-    ### start b_cap Service
-    m_bcapclient.service_start("")
-    print("Send SERVICE_START packet")
-
-    ### set Parameter
-    Name = ""
-    Provider="CaoProv.DENSO.VRC"
-    Machine = ("localhost")
-    Option = ("")
-
-    ### Connect to RC8 (RC8(VRC)provider)
-    hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
-    print("Connect RC8")
-    ### get Robot Object Handl
-    HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
-    print("AddRobot")
-
-    ### TakeArm
-    Command = "TakeArm"
-    Param = [0,0]
-    m_bcapclient.robot_execute(HRobot,Command,Param)
-    print("TakeArm")
-
-    ### Set Parameters
-    #Interpolation
-    Comp=1
-
-    eng = Dispatch("CAO.CaoEngine")
-    ctrl = eng.Workspaces(0).AddController(
-        "", "CaoProv.DENSO.RC8", "", "Server=" + "192.168.0.1"
-    )
-
-    caoRobot = ctrl.AddRobot("robot0", "")
-
-    m_bcapclient.robot_execute(HRobot, "GiveArm")
-    m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
-    caoRobot.Execute("Motor", [1, 0])
-
-    ##(open in mm, speed)
-
-    ctrl.Execute("HandMoveA", [input_value, 25])
-
-    caoRobot.Execute("GiveArm")
-    m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
-    m_bcapclient.robot_execute(HRobot, "Motor", [1, 0])
 
 
 class App(Tk):
     def __init__(self):
         super().__init__()
+        self.robot_lock = threading.Lock()
         self.configure(background='white')
-
+        
         self.passiBase = [10, 5, 4, 11, 7, 11]
 
         self.minimi = [-150, -60, 20, -165, -85, -165]
@@ -156,31 +56,148 @@ class App(Tk):
 
         
     
-        self.title("PF4EA")
-        self.geometry("1000x1200")
+        self.title("Multiple Cobotta Remote Controls")
+        self.geometry("500x700")
         self.page = Page1(self)
         self.start_position()
 
 
+    def move_arm_to_position(self, Position):
+        try:
+            with self.robot_lock: 
+                host = "192.168.0.1"
+                port = 5007
+                timeout = 2000
+
+                m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
+                #print("Open Connection")
+
+                m_bcapclient.service_start("")
+                #print("Send SERVICE_START packet")
+
+                Name = ""
+                Provider="CaoProv.DENSO.VRC"
+                Machine = ("localhost")
+                Option = ("")
+
+                hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
+                #print("Connect RC8")
+                HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
+                #print("AddRobot")
+
+                Command = "TakeArm"
+                Param = [0,0]
+                m_bcapclient.robot_execute(HRobot,Command,Param)
+                #print("TakeArm")
+
+                Command = "ExtSpeed"
+                Speed = 50
+                Accel = 50
+                Decel = 50
+                Param = [Speed,Accel,Decel]
+                m_bcapclient.robot_execute(HRobot,Command,Param)
+                print("ExtSpeed")
+
+
+                Comp=1
+                m_bcapclient.robot_move(HRobot,Comp,Position,"")
+                #print("Complete Move")
+
+
+                Command = "GiveArm"
+                Param = None
+                m_bcapclient.robot_execute(HRobot,Command,Param)
+                #print("GiveArm")
+                
+                if(HRobot != 0):
+                    m_bcapclient.robot_release(HRobot)
+                    #print("Release Robot Object")
+                
+                if(hCtrl != 0):
+                    m_bcapclient.controller_disconnect(hCtrl)
+                    #print("Release Controller")
+                
+                m_bcapclient.service_stop()
+                #print("B-CAP service Stop")
+        except:
+            Page1.print_error("Impossibile muovere il robot")
+        
+
+    def move_hand(self, input_value):
+        try:
+            with self.robot_lock: 
+                host = "192.168.0.1"
+                port = 5007
+                timeout = 2000
+
+                ### Connection processing of tcp communication
+                m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
+                print("Open Connection")
+
+                ### start b_cap Service
+                m_bcapclient.service_start("")
+                print("Send SERVICE_START packet")
+
+                ### set Parameter
+                Name = ""
+                Provider="CaoProv.DENSO.VRC"
+                Machine = ("localhost")
+                Option = ("")
+
+                ### Connect to RC8 (RC8(VRC)provider)
+                hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
+                print("Connect RC8")
+                ### get Robot Object Handl
+                HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
+                print("AddRobot")
+
+                ### TakeArm
+                Command = "TakeArm"
+                Param = [0,0]
+                m_bcapclient.robot_execute(HRobot,Command,Param)
+                print("TakeArm")
+
+                ### Set Parameters
+                #Interpolation
+                Comp=1
+
+                eng = Dispatch("CAO.CaoEngine")
+                ctrl = eng.Workspaces(0).AddController(
+                    "", "CaoProv.DENSO.RC8", "", "Server=" + "192.168.0.1"
+                )
+
+                caoRobot = ctrl.AddRobot("robot0", "")
+
+                m_bcapclient.robot_execute(HRobot, "GiveArm")
+                m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
+                caoRobot.Execute("Motor", [1, 0])
+
+                ##(open in mm, speed)
+
+                ctrl.Execute("HandMoveA", [input_value, 25])
+
+                caoRobot.Execute("GiveArm")
+                m_bcapclient.robot_execute(HRobot, "TakeArm", [0, 0])
+                m_bcapclient.robot_execute(HRobot, "Motor", [1, 0])
+
+        except:
+            Page1.print_error("Impossibile muovere la mano del robot")
+
     def start_position(self):
        
+        Position ="J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
+        self.move_arm_to_position(Position)
 
-        try:
-            Position ="J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
-            move_arm_to_position(Position)
+        input_value = self.hand.get()
+        self.move_hand(input_value)
+            
+        self.page.button_open.config(state=DISABLED)
 
-            input_value = self.hand.get()
-            move_hand(input_value)
-               
-            self.page.button_open.config(state=DISABLED)
-        except:
-            Page1.print_error("Errore di connessione")
-
-            ##AGGIUNGI CONTROLLI EVENTUALI IN CASO SI VOGLIANO CAMBIARE LE POSIZIONI INIZIALI 
         
 
 
     def move(self, joint, var):
+
 
         if (joint is self.j1):
             index=0
@@ -213,7 +230,7 @@ class App(Tk):
             if j < self.minimi[index]:
                 j = self.minimi[index]
             joint.set(j)
-           
+        
 
         elif(var == 1):
             j = joint.get() + int(self.passiBase[index] * self.passoMult.get())
@@ -233,11 +250,11 @@ class App(Tk):
                 buttondx.config(state=DISABLED)
         else: 
                 buttondx.config(state=NORMAL)
-        
+    
          
 
         Position ="@P J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
-        move_arm_to_position(Position)
+        self.move_arm_to_position(Position)
 
     def modify_passo_mult(self, var):
         if var == 0:
@@ -272,12 +289,10 @@ class App(Tk):
         self.page.button_open.config(state=NORMAL)
 
         input_value=self.hand.get()
-        move_hand(input_value)
+        self.move_hand(input_value)
 
     def open_hand(self):
           
-        self.hand.set(self.hand.get() + 3)
-
         h = self.hand.get() + 3
         if h > 30:
             h = 30
@@ -288,7 +303,7 @@ class App(Tk):
         self.page.button_close.config(state=NORMAL)
 
         input_value=self.hand.get()
-        move_hand(input_value)
+        self.move_hand(input_value)
 
 ##################### GESTURE#####################
 ############################################################################################################
@@ -316,6 +331,8 @@ class App(Tk):
 
 
     def start_gesture(self):
+        self.page.button_camera.config(state=DISABLED)
+        self.page.message_cam_label.config(text="Premere ESC per uscire")
         # Argument parsing #################################################################
         args = self.get_args()
 
@@ -375,12 +392,18 @@ class App(Tk):
         robustezza = 10
 
         while True:
+
+            
             fps = cvFpsCalc.get()
 
             # Process Key (ESC: end) #################################################
             key = cv.waitKey(10)
             if key == 27:  # ESC
                 break
+            
+
+
+
             number, mode = self.select_mode(key, mode)
 
             # Camera capture #####################################################
@@ -453,7 +476,6 @@ class App(Tk):
                     if a >=robustezza:
                         joint = self.j1
                         a=b=c=d=e=f=g=h=0
-                        print("SONO ENTRATO")
 
                     if b>=robustezza:
                         joint = self.j2 
@@ -477,12 +499,10 @@ class App(Tk):
 
                     if g>=robustezza:
                         self.open_hand()
-                        print("apro la mano")
                         a=b=c=d=e=f=g=h=0
 
                     if h>=robustezza:
                         self.close_hand()
-                        print("chiudo la mano")
                         a=b=c=d=e=f=g=h=0
 
 
@@ -491,10 +511,8 @@ class App(Tk):
                     if(joint != None):
                         if dxsx == "Right":
                             self.move(joint, 1)
-                            print("mi sono mosso")
                         if dxsx == "Left":
                             self.move(joint, 0)
-                            print("mi sono mosso")
                         joint=None
                         
 
@@ -514,8 +532,13 @@ class App(Tk):
             # Screen reflection #############################################################
             cv.imshow('Hand Gesture Recognition', debug_image)
 
+    
+            
+
         cap.release()
         cv.destroyAllWindows()
+        self.page.button_camera.config(state=NORMAL)
+        self.page.message_cam_label.config(text="")
 
 
     def select_mode(self, key, mode):
@@ -842,57 +865,25 @@ class App(Tk):
 ############################################################################################################        
   
     def update_message(self, message):
-        """Aggiorna il testo del message_label nella pagina."""
-        self.page.message_label.config(text=message)
-    '''
-    def use_voice (self):
-        text = ""
-        voice = True
-        while voice: 
-            recognizer_instance = sr.Recognizer()
-            with sr.Microphone() as source:
-                recognizer_instance.adjust_for_ambient_noise(source)
-                print("Cobotta è in ascolto: scegliere un giunto")
-                audio = recognizer_instance.listen(source)
-                text = recognizer_instance.recognize_google(audio, language="it-IT")
-            print(text)
-            
-            joint_selected = False
-            joint_mapping = {
-                "uno": self.j1,
-                "due": self.j2,
-                "tre": self.j3,
-                "quattro": self.j4,
-                "cinque": self.j5,
-                "sei": self.j6,
-            }
+        self.page.message_mic_label.config(text=message)
+    
+    def lebron_james_23(self):
 
-            for key, joint_var in joint_mapping.items():
-                if re.search(rf"\b{key}\b", text.lower()):
-                    j = joint_var
-                    joint_selected = True
-                    print(f"Giunto selezionato: {key}")
-                    break  
+        self.return_to_start()
 
-            if re.search(rf"\besci\b", text.lower()):
-                voice = False
-            
-            while joint_selected:
-                recognizer_instance = sr.Recognizer()
-                with sr.Microphone() as source:
-                    recognizer_instance.adjust_for_ambient_noise(source)
-                    print("Cobotta è in ascolto: scegliere una direzione")
-                    audio = recognizer_instance.listen(source)
-                    text = recognizer_instance.recognize_google(audio, language="it-IT")
-                print(text)
-                if re.search(r"\bdestra\b", text.lower()):
-                    self.move(j, 1)
-                if re.search(r"\bsinistra\b", text.lower()):
-                    self.move(j, 0)
-                if re.search(r"\bstop\b", text.lower()):
-                    joint_selected = False
-    '''
+        Pos1 ="@P J(3.7,66.74,85.29,5.34,18.54,-5.13)"
+        Pos2 ="@P J(25.13,34.56,20,5.93,55.16,-1.37)"
+        Pos3 ="@P J(38.30,84.26,20,2.08,60.09,-87.74)"
+        hand1 = 10
+        hand2 = 15
+        self.move_arm_to_position(Pos1)
+        self.move_hand(hand1)
+        self.move_arm_to_position(Pos2)
+        self.move_arm_to_position(Pos3)
+        self.move_hand(hand2)
 
+        self.return_to_start()
+    
     def stretch_arm(self):
        
         if self.j2.get() == self.massimi[1] or self.j3.get() == self.minimi[2]:
@@ -921,13 +912,34 @@ class App(Tk):
         if not(self.j3.get() == self.massimi[2]):
                 self.page.button_3d.config(state=NORMAL)
         
-         
+        Position ="@P J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
+        self.move_arm_to_position(Position)
+
+    def return_to_start(self):
+        self.j1.set(0)
+        self.j2.set(15)
+        self.j3.set(80)
+        self.j4.set(0)
+        self.j5.set(20)
+        self.j6.set(0)
+
+        self.hand.set(30)
 
         Position ="@P J("+ str(self.j1.get())+"," + str(self.j2.get())+"," + str(self.j3.get())+"," + str(self.j4.get())+"," + str(self.j5.get())+"," + str(self.j6.get())+")"
-        move_arm_to_position(Position)
+        self.move_arm_to_position(Position)
+        input_value= self.hand.get()
+        self.move_hand(input_value)
+        
+        for widget in self.page.winfo_children():
+            if isinstance(widget, Button):
+                widget.config(state=NORMAL)
 
+        self.page.button_open.config(state=DISABLED)
+        self.page.button_mic.config(state=DISABLED)
+        
 
     def use_voice(self):
+        self.page.button_mic.config(state=DISABLED)
         text = ""
         joint_text=""
         voice = True
@@ -947,14 +959,23 @@ class App(Tk):
             "6": self.j6,
         }
 
+        increasing_words = ["destra", "giù", "scendi", "più", "aumenta"]
+        decreasing_words = ["sinistra", "su", "sali" ,"meno", "diminuisci"]
+        stop_words = ["stop", "esci", "ferma", "basta", "interrompi"]   
+        open_words = ["apri", "apriti", "lascia", "rilascia", "molla"]
+        close_words = ["chiudi", "chiuditi", "stringi", "prendi"]
+        stretch_words = ["allunga", "allungati", "avanti", "estendi"]
+        start_position_words = ["iniziale", "inizio", "partenza", "reset", "riparti", "ripristina"]
+        basket_words = ["canestro", "pallacanestro", "basket", "lebron", "james", "23"]
+
         while voice:
             recognizer_instance = sr.Recognizer()
             with sr.Microphone() as source:
                 recognizer_instance.adjust_for_ambient_noise(source)
                 if(not joint_selected):
-                    self.update_message("Cobotta in ascolto...")
+                    self.update_message("Cobotta in ascolto... \"STOP\" per uscire")
                 else:
-                    self.update_message(f"Cobotta in ascolto... Giunto: {joint_text}")
+                    self.update_message(f"Giunto: {joint_text}...  \"STOP\" per uscire")
                 
                 try:
                     audio = recognizer_instance.listen(source, phrase_time_limit=60)
@@ -968,14 +989,9 @@ class App(Tk):
                     joint_selected = False
                     break
                 
-                increasing_words = ["destra", "giù", "scendi", "più", "aumenta"]
-                decreasing_words = ["sinistra", "su", "sali" ,"meno", "diminuisci"]
-                stop_words = ["stop", "esci", "ferma", "basta", "interrompi"]   
-                open_words = ["apri", "apriti", "lascia", "rilascia", "molla"]
-                close_words = ["chiudi", "chiuditi", "stringi", "prendi"]
-                stretch_words = ["allunga", "allungati", "avanti", "estendi"]
 
                 words = text.lower().split()
+                
                 for word in words:
                     if word in increasing_words:
                         if joint_selected:
@@ -1008,15 +1024,31 @@ class App(Tk):
                         self.close_hand()
                         self.update_message("Chiudo la mano...")
 
+                    elif word in start_position_words:
+                        self.return_to_start()
+                        self.update_message("Ritorno alla posizione iniziale...")
+
+                    elif word in basket_words:
+                        self.lebron_james_23()
+                        self.update_message("LeBron James")
+
                     elif word in stop_words:
                         joint_selected = False
                         voice = False
                         self.update_message("Smetto di ascoltare...")
                         self.update_message("")
+                        self.page.button_mic.config(state=NORMAL)
+
                         break
+                
 
 #################################################
         
+    def move_button(self, joint, direction):
+        t=threading.Thread(target=self.move, args=(joint, direction))
+        t.daemon=True
+        t.start()
+
     def camera_button(self):
         t=threading.Thread(target=self.start_gesture)
         t.daemon=True
@@ -1026,11 +1058,30 @@ class App(Tk):
         t=threading.Thread(target=self.use_voice)
         t.daemon=True
         t.start()
-            
 
+    def stop(self):
+        host = "192.168.0.1"
+        port = 5007
+        timeout = 2000
 
+        m_bcapclient = bcapclient.BCAPClient(host,port,timeout)
 
+        m_bcapclient.service_start("")
 
+        Name = ""
+        Provider="CaoProv.DENSO.VRC"
+        Machine = ("localhost")
+        Option = ("")
+
+        hCtrl = m_bcapclient.controller_connect(Name,Provider,Machine,Option)
+        HRobot = m_bcapclient.controller_getrobot(hCtrl,"Arm","")
+
+        m_bcapclient.robot_execute(HRobot, "Motor", [0, 1])
+        
+    def close_app(self):
+        t=threading.Thread(target=self.stop)
+        t.daemon=True
+        t.start()
 
 
 app = App()
