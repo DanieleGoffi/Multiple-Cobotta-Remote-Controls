@@ -1,4 +1,4 @@
-﻿'''
+'''
 Software License Agreement (MIT License)
 
 @copyright Copyright (c) 2017 DENSO WAVE INCORPORATED
